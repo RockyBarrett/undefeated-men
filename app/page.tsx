@@ -117,6 +117,8 @@ export default function HomePage() {
                 text="Adventure"
                 speed={90}
                 cursor={false}
+                soundEnabled
+                soundVolume={0.5}
                 onComplete={() => afterLine(500, () => setShowAchievement(true))}
               />
             </div>
@@ -128,6 +130,8 @@ export default function HomePage() {
                   text="Achievement"
                   speed={90}
                   cursor={false}
+                  soundEnabled
+                  soundVolume={0.5}
                   onComplete={() => afterLine(500, () => setShowPower(true))}
                 />
               </div>
@@ -140,6 +144,8 @@ export default function HomePage() {
                   text="Power"
                   speed={90}
                   cursor={false}
+                  soundEnabled
+                  soundVolume={0.5}
                   onComplete={() =>
                     afterLine(500, () => setShowAffiliation(true))
                   }
@@ -154,6 +160,8 @@ export default function HomePage() {
                   text="Affiliation"
                   speed={90}
                   cursor={false}
+                  soundEnabled
+                  soundVolume={0.5}
                   onComplete={() => afterLine(500, () => setShowSecurity(true))}
                 />
               </div>
@@ -166,6 +174,8 @@ export default function HomePage() {
                   text="Security"
                   speed={90}
                   cursor={false}
+                  soundEnabled
+                  soundVolume={0.5}
                   onComplete={() => afterLine(650, () => setShowQuestion(true))}
                 />
               </div>
@@ -178,6 +188,8 @@ export default function HomePage() {
                   text="What motivation type are you?"
                   speed={65}
                   cursor={false}
+                  soundEnabled
+                  soundVolume={0.5}
                   onComplete={() => afterLine(900, () => setShowClickLine(true))}
                 />
               </div>
@@ -190,6 +202,8 @@ export default function HomePage() {
                   text="Click here to find out"
                   speed={65}
                   cursor={false}
+                  soundEnabled
+                  soundVolume={0.5}
                   onComplete={() => afterLine(500, () => setShowCTA(true))}
                 />
 
