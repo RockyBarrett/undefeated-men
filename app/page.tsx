@@ -36,10 +36,13 @@ export default function HomePage() {
     }
   }, []);
 
-  // Play click for first button
+  // Play click for first button + unlock WebAudio for Typewriter
   const handleStart = () => {
     setStarted(true);
     try {
+      // unlock WebAudio in Typewriter (mobile-friendly)
+      document.dispatchEvent(new Event("um-audio-unlock"));
+
       if (clickRef.current) {
         clickRef.current.currentTime = 0;
         void clickRef.current.play();
@@ -193,6 +196,7 @@ export default function HomePage() {
                 {showCTA && (
                   <>
                     <span className="cta-arrow" aria-hidden>
+                      ➜
                     </span>
                     <a href="/test" className="inline-cta" aria-label="Start the test">
                       <button className="cta-btn-pulse">Start the Test</button>

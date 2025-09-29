@@ -1,16 +1,15 @@
 "use client";
-
 import { useEffect, useRef, useState } from "react";
 
 type Props = {
   text: string;
-  speed?: number;          // ms per character (default 45)
+  speed?: number;          // ms per character
   startDelay?: number;     // ms before typing starts
   cursor?: boolean;        // show blinking cursor
   onComplete?: () => void; // callback when typing finishes
-  soundEnabled?: boolean;  // default true
+  soundEnabled?: boolean;  // turn ticks on/off
+  soundEvery?: number;     // play sound every Nth character (default 1 = every char)
   soundVolume?: number;    // 0..1 (default 0.5)
-  soundEvery?: number;     // play click every N chars (default 1)
 };
 
 export default function Typewriter({
@@ -20,131 +19,137 @@ export default function Typewriter({
   cursor = true,
   onComplete,
   soundEnabled = true,
-  soundVolume = 0.5,
   soundEvery = 1,
+  soundVolume = 0.5,
 }: Props) {
   const [output, setOutput] = useState("");
+  const iRef = useRef(0);
+  const intervalRef = useRef<number | null>(null);
 
-  const charIndexRef = useRef(0);
-  const timerRef = useRef<number | null>(null);
-  const sessionRef = useRef(0); // prevent overlapping loops
+  // --- WebAudio (primary) ---
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const gainRef = useRef<GainNode | null>(null);
+  const bufferRef = useRef<AudioBuffer | null>(null);
+  const unlockedRef = useRef(false);
 
-  // Hold latest onComplete in a ref so we don't resubscribe the effect
-  const onCompleteRef = useRef<(() => void) | undefined>(onComplete);
-  useEffect(() => {
-    onCompleteRef.current = onComplete;
-  }, [onComplete]);
-
-  // ---- AUDIO POOL (optional clicks) ----
+  // --- HTMLAudio fallback pool ---
   const poolRef = useRef<HTMLAudioElement[] | null>(null);
   const poolIdxRef = useRef(0);
 
+  // unlock event (fired by Start button on home page)
   useEffect(() => {
-    if (!soundEnabled) return;
+    const unlock = async () => {
+      if (unlockedRef.current) return;
+      unlockedRef.current = true;
 
-    let url: string | null = null;
-    let cancelled = false;
-
-    const setup = async () => {
+      // Try WebAudio first
       try {
-        const res = await fetch("/sounds/typewriter.mp3", { cache: "force-cache" });
-        const blob = await res.blob();
-        url = URL.createObjectURL(blob);
-        if (cancelled) return;
+        const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+        if (Ctx) {
+          const ctx = new Ctx();
+          // Resume in case it starts suspended
+          if (ctx.state === "suspended") await ctx.resume();
+          audioCtxRef.current = ctx;
 
-        const make = () => {
-          const a = new Audio(url!);
-          a.preload = "auto";
-          a.volume = soundVolume;
-          return a;
-        };
-        poolRef.current = [make(), make(), make()];
+          const gain = ctx.createGain();
+          gain.gain.value = soundVolume;
+          gain.connect(ctx.destination);
+          gainRef.current = gain;
+
+          const res = await fetch("/sounds/typewriter.mp3", { cache: "force-cache" });
+          const arr = await res.arrayBuffer();
+          bufferRef.current = await ctx.decodeAudioData(arr);
+          return; // success
+        }
       } catch {
-        const make = () => {
+        // fall through to HTMLAudio
+      }
+
+      // Fallback pool
+      try {
+        poolRef.current = Array.from({ length: 6 }, () => {
           const a = new Audio("/sounds/typewriter.mp3");
           a.preload = "auto";
           a.volume = soundVolume;
           return a;
-        };
-        poolRef.current = [make(), make(), make()];
+        });
+      } catch {
+        // ignore
       }
     };
 
-    setup();
+    const handler = () => unlock();
+    document.addEventListener("um-audio-unlock", handler, { once: true });
 
-    return () => {
-      cancelled = true;
-      if (url) URL.revokeObjectURL(url);
-      poolRef.current?.forEach((a) => {
-        try { a.pause(); } catch {}
-      });
-      poolRef.current = null;
-    };
-  }, [soundEnabled, soundVolume]);
+    // If user already interacted (e.g., navigated directly), try unlocking anyway
+    // (won’t hurt; browsers may still block until a gesture happens)
+    setTimeout(unlock, 0);
 
-  const clickSound = () => {
-    if (!soundEnabled || !poolRef.current) return;
-    const pool = poolRef.current;
-    const a = pool[poolIdxRef.current % pool.length];
-    poolIdxRef.current++;
-    try {
-      a.currentTime = 0;
-      void a.play().catch(() => {});
-    } catch {}
-  };
+    return () => document.removeEventListener("um-audio-unlock", handler);
+  }, [soundVolume]);
 
-  // ---- TYPING LOOP (runs once per text/speed/startDelay change) ----
-  useEffect(() => {
-    const mySession = ++sessionRef.current;
+  const playTick = () => {
+    if (!soundEnabled) return;
 
-    // reset
-    charIndexRef.current = 0;
-    setOutput("");
-
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
+    // Prefer WebAudio if loaded
+    const ctx = audioCtxRef.current;
+    const buf = bufferRef.current;
+    const gain = gainRef.current;
+    if (ctx && buf && gain) {
+      try {
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        src.connect(gain);
+        // start immediately; WebAudio has minimal latency
+        src.start(0);
+        return;
+      } catch {
+        // fall through
+      }
     }
 
-    const startAt = performance.now() + startDelay;
-    let nextDue = startAt + speed;
+    // Fallback: HTMLAudio pool
+    const pool = poolRef.current;
+    if (pool && pool.length) {
+      const a = pool[poolIdxRef.current++ % pool.length];
+      try {
+        a.currentTime = 0;
+        a.play().catch(() => {});
+      } catch {}
+    }
+  };
 
-    const tick = () => {
-      if (mySession !== sessionRef.current) return; // abort old sessions
+  useEffect(() => {
+    // reset state for new `text`
+    iRef.current = 0;
+    setOutput("");
 
-      const now = performance.now();
-      if (now >= nextDue) {
-        const nextIndex = charIndexRef.current + 1;
-        charIndexRef.current = nextIndex;
+    const startTimer = window.setTimeout(() => {
+      intervalRef.current = window.setInterval(() => {
+        const i = ++iRef.current;
+        setOutput(text.slice(0, i));
 
-        const nextOut = text.slice(0, nextIndex);
-        setOutput(nextOut);
-
-        if (soundEnabled && soundEvery > 0 && nextIndex % soundEvery === 0) {
-          clickSound();
+        // tick on cadence
+        if (soundEnabled && soundEvery > 0 && i % soundEvery === 0) {
+          playTick();
         }
 
-        if (nextIndex >= text.length) {
-          onCompleteRef.current?.();
-          return; // stop
+        if (i >= text.length) {
+          if (intervalRef.current) window.clearInterval(intervalRef.current);
+          intervalRef.current = null;
+          onComplete?.();
         }
-
-        nextDue += speed;
-      }
-
-      const delay = Math.max(8, Math.min(speed, nextDue - now));
-      timerRef.current = window.setTimeout(tick, delay);
-    };
-
-    timerRef.current = window.setTimeout(tick, Math.max(0, startDelay));
+      }, Math.max(8, speed)); // clamp tiny speeds a bit
+    }, Math.max(0, startDelay));
 
     return () => {
-      if (mySession === sessionRef.current && timerRef.current) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
+      window.clearTimeout(startTimer);
+      if (intervalRef.current) {
+        window.clearInterval(intervalRef.current);
+        intervalRef.current = null;
       }
     };
-  }, [text, speed, startDelay, /* deliberately NOT depending on onComplete */, soundEnabled, soundEvery]);
+  }, [text, speed, startDelay, soundEnabled, soundEvery]); // (keep volume outside loop)
 
   return (
     <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
