@@ -1,6 +1,9 @@
+import Link from "next/link";
+
 "use client";
 
 import { useMemo, useState } from "react";
+
 
 type Option = { text: string; type: keyof Scores };
 type Question = { id: number; question: string; options: Option[] };
