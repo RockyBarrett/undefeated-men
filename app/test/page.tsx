@@ -58,47 +58,47 @@ const QUESTIONS: Question[] = [
   },
   {
     id: 4,
-question: "What kind of progress excites you the most?",
-options: [
-  { text: "Measurable achievements", type: "Achievement" },
-  { text: "Being someone people want to follow", type: "Power" },
-  { text: "Stronger bonds with the people I care about", type: "Affiliation" },
-  { text: "Steady habits and few failures", type: "Security" },
-  { text: "Epic experiences and unique challenges", type: "Adventure" },
-],
+    question: "What kind of progress excites you the most?",
+    options: [
+      { text: "Measurable achievements", type: "Achievement" },
+      { text: "Being someone people want to follow", type: "Power" },
+      { text: "Stronger bonds with the people I care about", type: "Affiliation" },
+      { text: "Steady habits and few failures", type: "Security" },
+      { text: "Epic experiences and unique challenges", type: "Adventure" },
+    ],
   },
   {
     id: 5,
-    question: "A unexpected obsticle occurs?",
+    question: "An unexpected obstacle occurs. How do you respond?",
     options: [
-      { text: "Fine if it still helps me hit targets", type: "Achievement" },
-      { text: "Stay in control, keep moving", type: "Power" },
-      { text: "Work together and overcome", type: "Affiliation" },
-      { text: "Take a step back and make a plan", type: "Security" },
-      { text: "Love it—surprise me", type: "Adventure" },
+      { text: "Tweak the plan if it still gets me closer to goals", type: "Achievement" },
+      { text: "Stay in control and keep momentum", type: "Power" },
+      { text: "Pull others together and push through", type: "Affiliation" },
+      { text: "Pause, step back, and make a new plan", type: "Security" },
+      { text: "See it as a surprise challenge to embrace", type: "Adventure" },
     ],
   },
   {
     id: 6,
-  question: "You've got 12 weeks to focus. What would make the journey most worth it for you?",
-  options: [
-    { text: "Beating my personal best and proving I’ve leveled up.", type: "Achievement" },
-    { text: "Taking charge and leading a group to success.", type: "Power" },
-    { text: "Crushing a goal side-by-side with close friends.", type: "Affiliation" },
-    { text: "Locking in a routine I can stick to without burning out.", type: "Security" },
-    { text: "Crossing off a bold, bucket-list style challenge.", type: "Adventure" },
-  ],
+    question: "You've got 12 weeks to focus. What would make the journey most worth it for you?",
+    options: [
+      { text: "Beating my personal best and proving I’ve leveled up", type: "Achievement" },
+      { text: "Taking charge and leading a group to success", type: "Power" },
+      { text: "Crushing a goal side-by-side with close friends", type: "Affiliation" },
+      { text: "Locking in a routine I can stick to without burning out", type: "Security" },
+      { text: "Crossing off a bold, bucket-list style challenge", type: "Adventure" },
+    ],
   },
   {
     id: 7,
-  question: "You’ve fallen off track. What’s most likely to get you back up?",
-  options: [
-    { text: "Reminding myself of the bigger goal I’m chasing", type: "Achievement" },
-    { text: "Knowing others are watching and following", type: "Power" },
-    { text: "Reconnecting with a friend for accountability", type: "Affiliation" },
-    { text: "Resetting my routine so I feel grounded again", type: "Security" },
-    { text: "Doing something fresh or adventurous to spark energy", type: "Adventure" },
-  ],
+    question: "You’ve fallen off track. What’s most likely to get you back up?",
+    options: [
+      { text: "Reminding myself of the bigger goal I’m chasing", type: "Achievement" },
+      { text: "Knowing others are watching and following", type: "Power" },
+      { text: "Reconnecting with a friend for accountability", type: "Affiliation" },
+      { text: "Resetting my routine so I feel grounded again", type: "Security" },
+      { text: "Doing something fresh or adventurous to spark energy", type: "Adventure" },
+    ],
   },
   {
     id: 8,
@@ -106,7 +106,7 @@ options: [
     options: [
       { text: "Focused: technique, pacing, measurable sets", type: "Achievement" },
       { text: "Leading: leading a group workout", type: "Power" },
-      { text: "Social: working out with a training patner", type: "Affiliation" },
+      { text: "Social: working out with a training partner", type: "Affiliation" },
       { text: "Controlled: low risk, purposeful progression", type: "Security" },
       { text: "Exploratory: new places and mixed training", type: "Adventure" },
     ],
@@ -219,9 +219,9 @@ export default function TestPage() {
             Thanks for taking the test. This is just the start—lock in a goal and we’ll help you
             train in a way that fits how you’re wired.
           </p>
-          <a href="/" style={{ marginTop: "2rem" }}>
+          <Link href="/" style={{ marginTop: "2rem" }}>
             <button>← Back to Home</button>
-          </a>
+          </Link>
         </div>
       )}
     </section>
