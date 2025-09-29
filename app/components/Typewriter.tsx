@@ -1,15 +1,15 @@
 "use client";
+
 import { useEffect, useRef, useState } from "react";
 
 type Props = {
   text: string;
-  speed?: number;          // ms per character
+  speed?: number;          // ms per character (default 45)
   startDelay?: number;     // ms before typing starts
   cursor?: boolean;        // show blinking cursor
   onComplete?: () => void; // callback when typing finishes
-  soundEnabled?: boolean;  // turn ticks on/off
-  soundEvery?: number;     // play sound every Nth character (default 1 = every char)
-  soundVolume?: number;    // 0..1 (default 0.5)
+  soundEnabled?: boolean;  // play tick per letter
+  soundVolume?: number;    // 0..1 volume
 };
 
 export default function Typewriter({
@@ -18,138 +18,120 @@ export default function Typewriter({
   startDelay = 0,
   cursor = true,
   onComplete,
-  soundEnabled = true,
-  soundEvery = 1,
-  soundVolume = 0.5,
+  soundEnabled = false,
+  soundVolume = 0.35,
 }: Props) {
   const [output, setOutput] = useState("");
-  const iRef = useRef(0);
+
+  // typing state
+  const idxRef = useRef<number>(0);
   const intervalRef = useRef<number | null>(null);
+  const startTimeoutRef = useRef<number | null>(null);
 
-  // --- WebAudio (primary) ---
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const gainRef = useRef<GainNode | null>(null);
-  const bufferRef = useRef<AudioBuffer | null>(null);
-  const unlockedRef = useRef(false);
-
-  // --- HTMLAudio fallback pool ---
-  const poolRef = useRef<HTMLAudioElement[] | null>(null);
-  const poolIdxRef = useRef(0);
-
-  // unlock event (fired by Start button on home page)
+  // keep latest onComplete in a ref to avoid re-subscribing effect
+  const onCompleteRef = useRef<Props["onComplete"]>(onComplete);
   useEffect(() => {
-    const unlock = async () => {
-      if (unlockedRef.current) return;
-      unlockedRef.current = true;
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
 
-      // Try WebAudio first
-      try {
-        const Ctx = window.AudioContext || (window as any).webkitAudioContext;
-        if (Ctx) {
-          const ctx = new Ctx();
-          // Resume in case it starts suspended
-          if (ctx.state === "suspended") await ctx.resume();
-          audioCtxRef.current = ctx;
+  // small audio pool to avoid cut-offs on fast typing
+  const audioPoolRef = useRef<HTMLAudioElement[]>([]);
+  const poolIndexRef = useRef<number>(0);
 
-          const gain = ctx.createGain();
-          gain.gain.value = soundVolume;
-          gain.connect(ctx.destination);
-          gainRef.current = gain;
+  // (re)build pool when volume/flag changes
+  useEffect(() => {
+    if (!soundEnabled) {
+      audioPoolRef.current = [];
+      return;
+    }
+    const pool: HTMLAudioElement[] = Array.from({ length: 4 }, () => {
+      const a = new Audio("/sounds/typewriter.mp3");
+      a.preload = "auto";
+      a.volume = soundVolume;
+      return a;
+    });
+    audioPoolRef.current = pool;
 
-          const res = await fetch("/sounds/typewriter.mp3", { cache: "force-cache" });
-          const arr = await res.arrayBuffer();
-          bufferRef.current = await ctx.decodeAudioData(arr);
-          return; // success
+    return () => {
+      audioPoolRef.current.forEach((a) => {
+        a.pause();
+        try {
+          // Safari can throw if src not set yet — ignore
+          a.currentTime = 0;
+        } catch {
+          /* noop */
         }
-      } catch {
-        // fall through to HTMLAudio
-      }
-
-      // Fallback pool
-      try {
-        poolRef.current = Array.from({ length: 6 }, () => {
-          const a = new Audio("/sounds/typewriter.mp3");
-          a.preload = "auto";
-          a.volume = soundVolume;
-          return a;
-        });
-      } catch {
-        // ignore
-      }
+      });
+      audioPoolRef.current = [];
     };
-
-    const handler = () => unlock();
-    document.addEventListener("um-audio-unlock", handler, { once: true });
-
-    // If user already interacted (e.g., navigated directly), try unlocking anyway
-    // (won’t hurt; browsers may still block until a gesture happens)
-    setTimeout(unlock, 0);
-
-    return () => document.removeEventListener("um-audio-unlock", handler);
-  }, [soundVolume]);
+  }, [soundEnabled, soundVolume]);
 
   const playTick = () => {
-    if (!soundEnabled) return;
-
-    // Prefer WebAudio if loaded
-    const ctx = audioCtxRef.current;
-    const buf = bufferRef.current;
-    const gain = gainRef.current;
-    if (ctx && buf && gain) {
-      try {
-        const src = ctx.createBufferSource();
-        src.buffer = buf;
-        src.connect(gain);
-        // start immediately; WebAudio has minimal latency
-        src.start(0);
-        return;
-      } catch {
-        // fall through
-      }
+    const pool = audioPoolRef.current;
+    if (!soundEnabled || pool.length === 0) return;
+    const el = pool[poolIndexRef.current];
+    try {
+      // restart from a tiny offset so very short samples retrigger reliably
+      el.currentTime = 0;
+      // Older iOS sometimes rejects play() — ignore the promise
+      void el.play();
+    } catch {
+      /* ignore */
     }
-
-    // Fallback: HTMLAudio pool
-    const pool = poolRef.current;
-    if (pool && pool.length) {
-      const a = pool[poolIdxRef.current++ % pool.length];
-      try {
-        a.currentTime = 0;
-        a.play().catch(() => {});
-      } catch {}
-    }
+    poolIndexRef.current = (poolIndexRef.current + 1) % pool.length;
   };
 
+  // main typing effect
   useEffect(() => {
-    // reset state for new `text`
-    iRef.current = 0;
+    // reset state for new text
     setOutput("");
+    idxRef.current = 0;
 
-    const startTimer = window.setTimeout(() => {
+    // clear old timers
+    if (intervalRef.current !== null) {
+      window.clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    if (startTimeoutRef.current !== null) {
+      window.clearTimeout(startTimeoutRef.current);
+      startTimeoutRef.current = null;
+    }
+
+    // start after delay
+    startTimeoutRef.current = window.setTimeout(() => {
       intervalRef.current = window.setInterval(() => {
-        const i = ++iRef.current;
-        setOutput(text.slice(0, i));
+        // append one more character
+        idxRef.current += 1;
+        const next = text.slice(0, idxRef.current);
+        setOutput(next);
 
-        // tick on cadence
-        if (soundEnabled && soundEvery > 0 && i % soundEvery === 0) {
+        // play tick for this character (if enabled and not whitespace)
+        const lastChar = next.charAt(next.length - 1);
+        if (lastChar && !/\s/.test(lastChar)) {
           playTick();
         }
 
-        if (i >= text.length) {
-          if (intervalRef.current) window.clearInterval(intervalRef.current);
+        // done?
+        if (idxRef.current >= text.length && intervalRef.current !== null) {
+          window.clearInterval(intervalRef.current);
           intervalRef.current = null;
-          onComplete?.();
+          // fire completion without causing dependency churn
+          onCompleteRef.current?.();
         }
-      }, Math.max(8, speed)); // clamp tiny speeds a bit
+      }, Math.max(8, speed)); // clamp tiny speeds
     }, Math.max(0, startDelay));
 
     return () => {
-      window.clearTimeout(startTimer);
-      if (intervalRef.current) {
+      if (intervalRef.current !== null) {
         window.clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
+      if (startTimeoutRef.current !== null) {
+        window.clearTimeout(startTimeoutRef.current);
+        startTimeoutRef.current = null;
+      }
     };
-  }, [text, speed, startDelay, soundEnabled, soundEvery]); // (keep volume outside loop)
+  }, [text, speed, startDelay]); // (intentionally not depending on onComplete or playTick)
 
   return (
     <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
