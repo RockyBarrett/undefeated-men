@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Props = {
   text: string;
@@ -38,13 +38,13 @@ export default function Typewriter({
   const audioPoolRef = useRef<HTMLAudioElement[]>([]);
   const poolIndexRef = useRef<number>(0);
 
-  // rebuild audio pool when volume/flag changes
+  // (re)build pool when volume/flag changes
   useEffect(() => {
     if (!soundEnabled) {
       audioPoolRef.current = [];
       return;
     }
-    const pool: HTMLAudioElement[] = Array.from({ length: 4 }, () => {
+    const pool: HTMLAudioElement[] = Array.from({ length: 8 }, () => {   // increased to 8
       const a = new Audio("/sounds/typewriter.mp3");
       a.preload = "auto";
       a.volume = soundVolume;
@@ -65,7 +65,7 @@ export default function Typewriter({
     };
   }, [soundEnabled, soundVolume]);
 
-  const playTick = useCallback(() => {
+  const playTick = () => {
     const pool = audioPoolRef.current;
     if (!soundEnabled || pool.length === 0) return;
     const el = pool[poolIndexRef.current];
@@ -76,13 +76,15 @@ export default function Typewriter({
       /* ignore */
     }
     poolIndexRef.current = (poolIndexRef.current + 1) % pool.length;
-  }, [soundEnabled]);
+  };
 
   // main typing effect
   useEffect(() => {
+    // reset state for new text
     setOutput("");
     idxRef.current = 0;
 
+    // clear old timers
     if (intervalRef.current !== null) {
       window.clearInterval(intervalRef.current);
       intervalRef.current = null;
@@ -92,6 +94,7 @@ export default function Typewriter({
       startTimeoutRef.current = null;
     }
 
+    // start after delay
     startTimeoutRef.current = window.setTimeout(() => {
       intervalRef.current = window.setInterval(() => {
         idxRef.current += 1;
@@ -121,10 +124,10 @@ export default function Typewriter({
         startTimeoutRef.current = null;
       }
     };
-  }, [text, speed, startDelay, playTick]);
+  }, [text, speed, startDelay]);
 
   return (
-    <span className="typewriter-text">
+    <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
       {output}
       {cursor && <span className="tw-cursor">█</span>}
     </span>
