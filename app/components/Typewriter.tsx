@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 
 type Props = {
   text: string;
@@ -34,61 +34,55 @@ export default function Typewriter({
     onCompleteRef.current = onComplete;
   }, [onComplete]);
 
-  // --- AUDIO POOL ---
-  const poolRef = useRef<HTMLAudioElement[] | null>(null);
-  const poolIdxRef = useRef<number>(0);
+  // small audio pool to avoid cut-offs on fast typing
+  const audioPoolRef = useRef<HTMLAudioElement[]>([]);
+  const poolIndexRef = useRef<number>(0);
 
-  // (re)create pool when sound flags change
+  // rebuild audio pool when volume/flag changes
   useEffect(() => {
     if (!soundEnabled) {
-      poolRef.current?.forEach((a) => {
-        a.pause();
-        try { a.currentTime = 0; } catch {}
-      });
-      poolRef.current = null;
+      audioPoolRef.current = [];
       return;
     }
-
-    const pool = Array.from({ length: 4 }, () => {
+    const pool: HTMLAudioElement[] = Array.from({ length: 4 }, () => {
       const a = new Audio("/sounds/typewriter.mp3");
       a.preload = "auto";
-      a.volume = Math.min(1, Math.max(0, soundVolume));
+      a.volume = soundVolume;
       return a;
     });
-    poolRef.current = pool;
+    audioPoolRef.current = pool;
 
     return () => {
-      pool.forEach((a) => {
+      audioPoolRef.current.forEach((a) => {
         a.pause();
-        try { a.currentTime = 0; } catch {}
+        try {
+          a.currentTime = 0;
+        } catch {
+          /* noop */
+        }
       });
-      poolRef.current = null;
+      audioPoolRef.current = [];
     };
   }, [soundEnabled, soundVolume]);
 
-  // stable tick player
   const playTick = useCallback(() => {
-    if (!soundEnabled) return;
-    const pool = poolRef.current;
-    if (!pool || pool.length === 0) return;
-
-    const el = pool[poolIdxRef.current];
+    const pool = audioPoolRef.current;
+    if (!soundEnabled || pool.length === 0) return;
+    const el = pool[poolIndexRef.current];
     try {
       el.currentTime = 0;
-      void el.play(); // ignore promise for iOS
+      void el.play();
     } catch {
-      // ignore
+      /* ignore */
     }
-    poolIdxRef.current = (poolIdxRef.current + 1) % pool.length;
+    poolIndexRef.current = (poolIndexRef.current + 1) % pool.length;
   }, [soundEnabled]);
 
-  // --- MAIN TYPING EFFECT ---
+  // main typing effect
   useEffect(() => {
-    // reset state for new text
     setOutput("");
     idxRef.current = 0;
 
-    // clear old timers
     if (intervalRef.current !== null) {
       window.clearInterval(intervalRef.current);
       intervalRef.current = null;
@@ -98,28 +92,23 @@ export default function Typewriter({
       startTimeoutRef.current = null;
     }
 
-    // start after delay
     startTimeoutRef.current = window.setTimeout(() => {
       intervalRef.current = window.setInterval(() => {
-        const i = idxRef.current + 1;
-        idxRef.current = i;
-
-        const next = text.slice(0, i);
+        idxRef.current += 1;
+        const next = text.slice(0, idxRef.current);
         setOutput(next);
 
-        // play tick for this character (if enabled and not whitespace)
         const lastChar = next.charAt(next.length - 1);
         if (lastChar && !/\s/.test(lastChar)) {
           playTick();
         }
 
-        // done?
-        if (i >= text.length && intervalRef.current !== null) {
+        if (idxRef.current >= text.length && intervalRef.current !== null) {
           window.clearInterval(intervalRef.current);
           intervalRef.current = null;
           onCompleteRef.current?.();
         }
-      }, Math.max(8, speed)); // clamp for sanity
+      }, Math.max(8, speed));
     }, Math.max(0, startDelay));
 
     return () => {
@@ -132,10 +121,10 @@ export default function Typewriter({
         startTimeoutRef.current = null;
       }
     };
-  }, [text, speed, startDelay, playTick]); // include playTick to satisfy ESLint and keep behavior stable
+  }, [text, speed, startDelay, playTick]);
 
   return (
-    <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+    <span className="typewriter-text">
       {output}
       {cursor && <span className="tw-cursor">█</span>}
     </span>
