@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type Props = {
   text: string;
@@ -23,31 +23,42 @@ export default function Typewriter({
 }: Props) {
   const [output, setOutput] = useState("");
 
-  // Keep latest callback without re-subscribing effect
+  // typing state
+  const idxRef = useRef<number>(0);
+  const intervalRef = useRef<number | null>(null);
+  const startTimeoutRef = useRef<number | null>(null);
+
+  // keep latest onComplete in a ref to avoid re-subscribing effect
   const onCompleteRef = useRef<Props["onComplete"]>(onComplete);
   useEffect(() => {
     onCompleteRef.current = onComplete;
   }, [onComplete]);
 
-  // Small audio pool so ticks don’t get cut off
+  // --- AUDIO POOL ---
   const poolRef = useRef<HTMLAudioElement[] | null>(null);
-  const poolIdxRef = useRef(0);
+  const poolIdxRef = useRef<number>(0);
 
+  // (re)create pool when sound flags change
   useEffect(() => {
     if (!soundEnabled) {
+      poolRef.current?.forEach((a) => {
+        a.pause();
+        try { a.currentTime = 0; } catch {}
+      });
       poolRef.current = null;
       return;
     }
+
     const pool = Array.from({ length: 4 }, () => {
       const a = new Audio("/sounds/typewriter.mp3");
       a.preload = "auto";
-      a.volume = soundVolume;
+      a.volume = Math.min(1, Math.max(0, soundVolume));
       return a;
     });
     poolRef.current = pool;
 
     return () => {
-      poolRef.current?.forEach((a) => {
+      pool.forEach((a) => {
         a.pause();
         try { a.currentTime = 0; } catch {}
       });
@@ -55,64 +66,73 @@ export default function Typewriter({
     };
   }, [soundEnabled, soundVolume]);
 
-  const playTick = () => {
+  // stable tick player
+  const playTick = useCallback(() => {
+    if (!soundEnabled) return;
     const pool = poolRef.current;
-    if (!soundEnabled || !pool || pool.length === 0) return;
+    if (!pool || pool.length === 0) return;
+
     const el = pool[poolIdxRef.current];
     try {
       el.currentTime = 0;
-      void el.play();
-    } catch {}
+      void el.play(); // ignore promise for iOS
+    } catch {
+      // ignore
+    }
     poolIdxRef.current = (poolIdxRef.current + 1) % pool.length;
-  };
+  }, [soundEnabled]);
 
-  // --- Typing logic (robust, no duplicates) ---
-  const runIdRef = useRef(0);          // guard for overlapping runs
-  const timeoutRef = useRef<number | undefined>(undefined); // active timeout id
-
+  // --- MAIN TYPING EFFECT ---
   useEffect(() => {
-    const myRun = ++runIdRef.current;
-
-    // reset state
+    // reset state for new text
     setOutput("");
+    idxRef.current = 0;
 
-    // clear any leftover timeout
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
+    // clear old timers
+    if (intervalRef.current !== null) {
+      window.clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    if (startTimeoutRef.current !== null) {
+      window.clearTimeout(startTimeoutRef.current);
+      startTimeoutRef.current = null;
     }
 
-    const s = Math.max(8, speed);
-    const start = Math.max(0, startDelay);
+    // start after delay
+    startTimeoutRef.current = window.setTimeout(() => {
+      intervalRef.current = window.setInterval(() => {
+        const i = idxRef.current + 1;
+        idxRef.current = i;
 
-    let i = 0;
+        const next = text.slice(0, i);
+        setOutput(next);
 
-    const typeNext = () => {
-      // If another run started, stop this one
-      if (runIdRef.current !== myRun) return;
+        // play tick for this character (if enabled and not whitespace)
+        const lastChar = next.charAt(next.length - 1);
+        if (lastChar && !/\s/.test(lastChar)) {
+          playTick();
+        }
 
-      i += 1;
-      const next = text.slice(0, i);
-      setOutput(next);
+        // done?
+        if (i >= text.length && intervalRef.current !== null) {
+          window.clearInterval(intervalRef.current);
+          intervalRef.current = null;
+          onCompleteRef.current?.();
+        }
+      }, Math.max(8, speed)); // clamp for sanity
+    }, Math.max(0, startDelay));
 
-      // tick for non-whitespace
-      const ch = next.charAt(next.length - 1);
-      if (ch && !/\s/.test(ch)) playTick();
-
-      if (i < text.length) {
-        timeoutRef.current = window.setTimeout(typeNext, s);
-      } else {
-        onCompleteRef.current?.();
+    return () => {
+      if (intervalRef.current !== null) {
+        window.clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      if (startTimeoutRef.current !== null) {
+        window.clearTimeout(startTimeoutRef.current);
+        startTimeoutRef.current = null;
       }
     };
-
-    // initial delay then start
-    timeoutRef.current = window.setTimeout(typeNext, start);
-
-    // cleanup this run
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, [text, speed, startDelay]); // intentionally exclude onComplete/playTick
+  }, [text, speed, startDelay, playTick]); // include playTick to satisfy ESLint and keep behavior stable
 
   return (
     <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
