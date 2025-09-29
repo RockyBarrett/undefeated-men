@@ -23,115 +23,96 @@ export default function Typewriter({
 }: Props) {
   const [output, setOutput] = useState("");
 
-  // typing state
-  const idxRef = useRef<number>(0);
-  const intervalRef = useRef<number | null>(null);
-  const startTimeoutRef = useRef<number | null>(null);
-
-  // keep latest onComplete in a ref to avoid re-subscribing effect
+  // Keep latest callback without re-subscribing effect
   const onCompleteRef = useRef<Props["onComplete"]>(onComplete);
   useEffect(() => {
     onCompleteRef.current = onComplete;
   }, [onComplete]);
 
-  // small audio pool to avoid cut-offs on fast typing
-  const audioPoolRef = useRef<HTMLAudioElement[]>([]);
-  const poolIndexRef = useRef<number>(0);
+  // Small audio pool so ticks don’t get cut off
+  const poolRef = useRef<HTMLAudioElement[] | null>(null);
+  const poolIdxRef = useRef(0);
 
-  // (re)build pool when volume/flag changes
   useEffect(() => {
     if (!soundEnabled) {
-      audioPoolRef.current = [];
+      poolRef.current = null;
       return;
     }
-    const pool: HTMLAudioElement[] = Array.from({ length: 4 }, () => {
+    const pool = Array.from({ length: 4 }, () => {
       const a = new Audio("/sounds/typewriter.mp3");
       a.preload = "auto";
       a.volume = soundVolume;
       return a;
     });
-    audioPoolRef.current = pool;
+    poolRef.current = pool;
 
     return () => {
-      audioPoolRef.current.forEach((a) => {
+      poolRef.current?.forEach((a) => {
         a.pause();
-        try {
-          // Safari can throw if src not set yet — ignore
-          a.currentTime = 0;
-        } catch {
-          /* noop */
-        }
+        try { a.currentTime = 0; } catch {}
       });
-      audioPoolRef.current = [];
+      poolRef.current = null;
     };
   }, [soundEnabled, soundVolume]);
 
   const playTick = () => {
-    const pool = audioPoolRef.current;
-    if (!soundEnabled || pool.length === 0) return;
-    const el = pool[poolIndexRef.current];
+    const pool = poolRef.current;
+    if (!soundEnabled || !pool || pool.length === 0) return;
+    const el = pool[poolIdxRef.current];
     try {
-      // restart from a tiny offset so very short samples retrigger reliably
       el.currentTime = 0;
-      // Older iOS sometimes rejects play() — ignore the promise
       void el.play();
-    } catch {
-      /* ignore */
-    }
-    poolIndexRef.current = (poolIndexRef.current + 1) % pool.length;
+    } catch {}
+    poolIdxRef.current = (poolIdxRef.current + 1) % pool.length;
   };
 
-  // main typing effect
+  // --- Typing logic (robust, no duplicates) ---
+  const runIdRef = useRef(0);          // guard for overlapping runs
+  const timeoutRef = useRef<number | undefined>(undefined); // active timeout id
+
   useEffect(() => {
-    // reset state for new text
+    const myRun = ++runIdRef.current;
+
+    // reset state
     setOutput("");
-    idxRef.current = 0;
 
-    // clear old timers
-    if (intervalRef.current !== null) {
-      window.clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-    if (startTimeoutRef.current !== null) {
-      window.clearTimeout(startTimeoutRef.current);
-      startTimeoutRef.current = null;
+    // clear any leftover timeout
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
     }
 
-    // start after delay
-    startTimeoutRef.current = window.setTimeout(() => {
-      intervalRef.current = window.setInterval(() => {
-        // append one more character
-        idxRef.current += 1;
-        const next = text.slice(0, idxRef.current);
-        setOutput(next);
+    const s = Math.max(8, speed);
+    const start = Math.max(0, startDelay);
 
-        // play tick for this character (if enabled and not whitespace)
-        const lastChar = next.charAt(next.length - 1);
-        if (lastChar && !/\s/.test(lastChar)) {
-          playTick();
-        }
+    let i = 0;
 
-        // done?
-        if (idxRef.current >= text.length && intervalRef.current !== null) {
-          window.clearInterval(intervalRef.current);
-          intervalRef.current = null;
-          // fire completion without causing dependency churn
-          onCompleteRef.current?.();
-        }
-      }, Math.max(8, speed)); // clamp tiny speeds
-    }, Math.max(0, startDelay));
+    const typeNext = () => {
+      // If another run started, stop this one
+      if (runIdRef.current !== myRun) return;
 
-    return () => {
-      if (intervalRef.current !== null) {
-        window.clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-      if (startTimeoutRef.current !== null) {
-        window.clearTimeout(startTimeoutRef.current);
-        startTimeoutRef.current = null;
+      i += 1;
+      const next = text.slice(0, i);
+      setOutput(next);
+
+      // tick for non-whitespace
+      const ch = next.charAt(next.length - 1);
+      if (ch && !/\s/.test(ch)) playTick();
+
+      if (i < text.length) {
+        timeoutRef.current = window.setTimeout(typeNext, s);
+      } else {
+        onCompleteRef.current?.();
       }
     };
-  }, [text, speed, startDelay]); // (intentionally not depending on onComplete or playTick)
+
+    // initial delay then start
+    timeoutRef.current = window.setTimeout(typeNext, start);
+
+    // cleanup this run
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, [text, speed, startDelay]); // intentionally exclude onComplete/playTick
 
   return (
     <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
