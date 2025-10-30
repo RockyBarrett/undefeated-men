@@ -24,7 +24,7 @@ const START_SCORES: Scores = {
   Adventure: 0,
 };
 
-const MEN_TEST_PATH = "/men-test";
+const MEN_TEST_PATH = "/men";
 
 const QUESTIONS: Question[] = [
   { id: 1, question: "You’re starting a fitness journey. What excites you the most?", options: [
