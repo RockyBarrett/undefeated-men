@@ -4,12 +4,13 @@ import { useEffect, useRef, useState } from "react";
 
 type Props = {
   text: string;
-  speed?: number;          // ms per character (default 45)
-  startDelay?: number;     // ms before typing starts
-  cursor?: boolean;        // show blinking cursor
-  onComplete?: () => void; // callback when typing finishes
-  soundEnabled?: boolean;  // play tick per letter
-  soundVolume?: number;    // 0..1 volume
+  speed?: number;
+  startDelay?: number;
+  cursor?: boolean;
+  soundEnabled?: boolean;
+  soundSrc?: string;
+  soundVolume?: number;
+  onComplete?: () => void;
 };
 
 export default function Typewriter({
@@ -17,119 +18,98 @@ export default function Typewriter({
   speed = 45,
   startDelay = 0,
   cursor = true,
-  onComplete,
   soundEnabled = false,
-  soundVolume = 0.35,
+  soundSrc,
+  soundVolume = 0.45,
+  onComplete,
 }: Props) {
   const [output, setOutput] = useState("");
+  const [cursorVisible, setCursorVisible] = useState(true);
 
-  // typing state
-  const idxRef = useRef<number>(0);
+  const indexRef = useRef(0);
   const intervalRef = useRef<number | null>(null);
-  const startTimeoutRef = useRef<number | null>(null);
+  const timeoutRef = useRef<number | null>(null);
+  const hasFinishedRef = useRef(false);
 
-  // keep latest onComplete in a ref to avoid re-subscribing effect
-  const onCompleteRef = useRef<Props["onComplete"]>(onComplete);
+  // 🔊 simple audio pool
+  const poolRef = useRef<HTMLAudioElement[] | null>(null);
+  const poolIdxRef = useRef(0);
+
+  const effectiveSound = soundEnabled ? (soundSrc || "/sounds/typewriter.mp3") : undefined;
+
   useEffect(() => {
-    onCompleteRef.current = onComplete;
-  }, [onComplete]);
-
-  // small audio pool to avoid cut-offs on fast typing
-  const audioPoolRef = useRef<HTMLAudioElement[]>([]);
-  const poolIndexRef = useRef<number>(0);
-
-  // (re)build pool when volume/flag changes
-  useEffect(() => {
-    if (!soundEnabled) {
-      audioPoolRef.current = [];
+    if (!effectiveSound) {
+      poolRef.current = null;
       return;
     }
-    const pool: HTMLAudioElement[] = Array.from({ length: 8 }, () => {   // increased to 8
-      const a = new Audio("/sounds/typewriter.mp3");
+    const pool: HTMLAudioElement[] = [];
+    for (let i = 0; i < 4; i++) {
+      const a = new Audio(effectiveSound);
       a.preload = "auto";
       a.volume = soundVolume;
-      return a;
-    });
-    audioPoolRef.current = pool;
-
-    return () => {
-      audioPoolRef.current.forEach((a) => {
-        a.pause();
-        try {
-          a.currentTime = 0;
-        } catch {
-          /* noop */
-        }
-      });
-      audioPoolRef.current = [];
-    };
-  }, [soundEnabled, soundVolume]);
+      pool.push(a);
+    }
+    poolRef.current = pool;
+  }, [effectiveSound, soundVolume]);
 
   const playTick = () => {
-    const pool = audioPoolRef.current;
-    if (!soundEnabled || pool.length === 0) return;
-    const el = pool[poolIndexRef.current];
+    const pool = poolRef.current;
+    if (!pool) return;
+    const a = pool[poolIdxRef.current++ % pool.length];
     try {
-      el.currentTime = 0;
-      void el.play();
-    } catch {
-      /* ignore */
-    }
-    poolIndexRef.current = (poolIndexRef.current + 1) % pool.length;
+      a.currentTime = 0;
+      void a.play();
+    } catch {}
   };
 
-  // main typing effect
+  // blink cursor
   useEffect(() => {
-    // reset state for new text
+    if (!cursor) return;
+    const id = window.setInterval(() => setCursorVisible((v) => !v), 550);
+    return () => window.clearInterval(id);
+  }, [cursor]);
+
+  // main typing effect — only runs once per text change
+  useEffect(() => {
+    // prevent restarting if we've already finished typing this exact text
+    if (hasFinishedRef.current && output === text) return;
+
     setOutput("");
-    idxRef.current = 0;
+    indexRef.current = 0;
+    hasFinishedRef.current = false;
 
-    // clear old timers
-    if (intervalRef.current !== null) {
-      window.clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-    if (startTimeoutRef.current !== null) {
-      window.clearTimeout(startTimeoutRef.current);
-      startTimeoutRef.current = null;
-    }
+    if (intervalRef.current) window.clearInterval(intervalRef.current);
+    if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
 
-    // start after delay
-    startTimeoutRef.current = window.setTimeout(() => {
+    timeoutRef.current = window.setTimeout(() => {
       intervalRef.current = window.setInterval(() => {
-        idxRef.current += 1;
-        const next = text.slice(0, idxRef.current);
-        setOutput(next);
-
-        const lastChar = next.charAt(next.length - 1);
-        if (lastChar && !/\s/.test(lastChar)) {
-          playTick();
-        }
-
-        if (idxRef.current >= text.length && intervalRef.current !== null) {
-          window.clearInterval(intervalRef.current);
+        const i = indexRef.current;
+        if (i >= text.length) {
+          if (intervalRef.current) window.clearInterval(intervalRef.current);
           intervalRef.current = null;
-          onCompleteRef.current?.();
+          hasFinishedRef.current = true;
+          onComplete?.();
+          return;
         }
-      }, Math.max(8, speed));
+
+        const ch = text[i];
+        setOutput((prev) => prev + ch);
+        indexRef.current = i + 1;
+
+        if (soundEnabled && ch && !/\s/.test(ch)) playTick();
+      }, Math.max(10, speed));
     }, Math.max(0, startDelay));
 
     return () => {
-      if (intervalRef.current !== null) {
-        window.clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-      if (startTimeoutRef.current !== null) {
-        window.clearTimeout(startTimeoutRef.current);
-        startTimeoutRef.current = null;
-      }
+      if (intervalRef.current) window.clearInterval(intervalRef.current);
+      if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
     };
-  }, [text, speed, startDelay]);
+  }, [text, speed, startDelay, soundEnabled]); // only rerun if text or key props change
 
   return (
-    <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+    <span style={{ whiteSpace: "pre-wrap", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
       {output}
-      {cursor && <span className="tw-cursor">█</span>}
+      {cursor && <span style={{ opacity: cursorVisible ? 1 : 0 }}>█</span>}
     </span>
   );
 }

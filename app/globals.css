@@ -1,5 +1,12 @@
 /* globals.css */
 
+/* Nunito Google Font Import */
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;600;700&display=swap');
+
+* {
+  font-family: 'Nunito', sans-serif !important;
+}
+
 /* Reset / Normalize */
 * {
   margin: 0;
@@ -455,3 +462,80 @@ button,
   font-smooth: antialiased;
   text-rendering: optimizeLegibility;
 }
+
+/* --- Mailchimp form helpers (dark theme) --- */
+.mc-form { margin-top: 0.75rem; }
+
+.mc-sub {
+  margin-top: .25rem;
+  color: rgba(255,255,255,.8);
+  font-size: .95rem;
+}
+
+.mc-group { margin-top: 0.75rem; }
+.mc-group label { display:block; font-weight: 700; margin-bottom: 0.35rem; text-transform:none; letter-spacing:0; }
+
+.mc-row {
+  display: grid;
+  gap: 0.75rem;
+}
+
+@media (min-width: 640px) {
+  .mc-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.mc-actions {
+  margin-top: 0.85rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Make sure form controls inherit your dark theme look */
+#mc-embedded-subscribe-form input[type="text"],
+#mc-embedded-subscribe-form input[type="email"],
+#mc-embedded-subscribe-form input[type="tel"] {
+  font: inherit;
+  color: inherit;
+}
+
+/* Optional: tighten card border to your accent on hover/focus inside */
+.mc-form:has(input:focus) { border-color: #e63946; }
+
+/* ---------- Home (two big cards) ---------- */
+.home { padding: 1.75rem var(--container-pad, 1rem) 3rem; }
+
+.home-hero { text-align: center; margin: 0 auto 1.25rem; max-width: 860px; }
+.home-hero h1 { font-size: clamp(2rem, 4vw, 2.75rem); letter-spacing: .5px; }
+.home-sub { color: rgba(255,255,255,.8); margin-top: .35rem; font-size: 1rem; }
+
+.home-grid { display: grid; gap: 16px; max-width: 1100px; margin: 0 auto; }
+@media (min-width: 860px) { .home-grid { grid-template-columns: 1fr 1fr; } }
+
+.home-card {
+  display: block;
+  border-radius: 14px;
+  padding: 1.25rem;
+  text-decoration: none;
+  transition: transform .12s ease, box-shadow .2s ease, border-color .2s ease, background .2s ease;
+  border: 1px solid rgba(255,255,255,.08);
+  box-shadow: 0 8px 26px rgba(0,0,0,.25), inset 0 0 0 1px rgba(255,255,255,.02);
+  background: rgba(17,17,17,.6);
+  backdrop-filter: saturate(120%) blur(4px);
+}
+.home-card-body h2 { margin: 0 0 .35rem; text-transform: uppercase; font-weight: 800; letter-spacing: .8px; }
+.home-card-body p { margin: 0 0 .75rem; color: rgba(255,255,255,.85); }
+.home-cta { font-weight: 800; letter-spacing: .3px; display: inline-block; }
+
+.home-card--blue { background: linear-gradient(180deg, rgba(37,99,235,.14), rgba(2,6,23,.25)); border-color: rgba(59,130,246,.35); }
+.home-card--blue h2 { color: #93c5fd; }        /* blue-300 */
+.home-card--blue .home-cta { color: #60a5fa; } /* blue-400 */
+.home-card--blue:hover { transform: translateY(-2px); box-shadow: 0 14px 32px rgba(37,99,235,.25); border-color: rgba(59,130,246,.6); }
+
+.home-card--red { background: linear-gradient(180deg, rgba(220,38,38,.18), rgba(15,15,15,.25)); border-color: rgba(239,68,68,.35); }
+.home-card--red h2 { color: #fca5a5; }         /* red-300 */
+.home-card--red .home-cta { color: #f87171; }  /* red-400 */
+.home-card--red:hover { transform: translateY(-2px); box-shadow: 0 14px 32px rgba(239,68,68,.26); border-color: rgba(248,113,113,.65); }
+
+@media (max-width: 480px) { .home-card { padding: 1rem; } }
